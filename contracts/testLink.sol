@@ -3,8 +3,8 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract TestERC20 is ERC20 {
-    constructor() ERC20("FAKEMATIC", "FMATIC") {
+contract TestLink is ERC20 {
+    constructor() ERC20("LINK", "LINK") {
         _mint(msg.sender, 10000000 * (10**uint256(decimals())));
     }
 
