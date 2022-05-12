@@ -15,7 +15,7 @@ async function main() {
 
   // We get the contract to deploy
   const Greeter = await hre.ethers.getContractFactory("StakeERC20");
-  const greeter = await Greeter.deploy();
+  const greeter = await Greeter.deploy(1);
 
   await greeter.deployed();
 

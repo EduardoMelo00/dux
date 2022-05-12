@@ -32,7 +32,6 @@ module.exports = {
       }
     }
   },
-  defaultNetwork: 'rinkeby',
   networks: {
     localhost: {
       url: 'http://127.0.0.1:8545',
@@ -46,8 +45,8 @@ module.exports = {
       url:
         process.env.RINKEBY_ENDPOINT,
       accounts: [process.env.DEPLOY_ACCOUNT_PRIVATE_KEY],
-      // gasPrice: 80000000000,
-      // gas: 22450000,
+      gasPrice: 80000000000,
+      blockGasLimit: 22450000,
     }
   },
 
