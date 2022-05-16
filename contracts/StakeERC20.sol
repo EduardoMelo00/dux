@@ -47,6 +47,10 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
 
 
 
+
+
+
+
     mapping(address => mapping(Tokens => StakedToken)) public stakedTokens; // owner => StakedToken
     mapping(address => mapping(Tokens => uint256)) public accruedReward;
    // mapping(Tokens =>IERC20) public tokensByNumbber; 
@@ -54,12 +58,18 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
 
     constructor(
 
-         uint256 _rewardFactor
+         uint256 _rewardFactor,
+         IERC20[] memory tokensPool
 
     ) {
 
 
 
+        for (uint256 index = 0; index < tokensPool.length; index++) {
+
+            _tokensF[index] = tokensPool[0];
+            
+        }
 
                // price feed ETHER / USD rinkeby
     //   tokenPriceFeed = AggregatorV3Interface(
@@ -68,12 +78,11 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
          link = IERC20(0x01BE23585060835E02B77ef475b0Cc51aA1e0709);
 
          dux   = IERC20(0x1f42e40BC1cA24609200cf6Eae2e9662FfE35869);   
+
+
+
          rewardFactor = _rewardFactor;
-
-
     }
-
-
 
    function stake(uint256 _amount, IERC20 token, Tokens tokenName) public {
        require(token.balanceOf(msg.sender) >= _amount, "You don't own this amount of matic.");
@@ -85,6 +94,9 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         stakedTokens[msg.sender][tokenName] = StakedToken(stakedTokens[msg.sender][tokenName].amount + (_amount  * 1e18), token, block.timestamp);
 
    }
+
+
+
 
    function calculateReward(address _owner, Tokens tokenName) public returns (uint256){
         StakedToken memory staked = stakedTokens[_owner][tokenName];
@@ -147,6 +159,18 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     function getTokenPriceFeed() public view returns (AggregatorV3Interface) {
         return tokenPriceFeed;
     }
+
+    function addnewPool(IERC20 newToken, string memory oracle, string memory poolOrContract ) public  {
+
+    }
+
+    function getTokensF(uint256 tokenNumber) public view returns(IERC20) {
+
+
+        return _tokensF[tokenNumber];
+
+    }
+
 
 
 }
