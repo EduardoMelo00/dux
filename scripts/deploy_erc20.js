@@ -2,7 +2,7 @@ const { ethers } = require('hardhat');
 
 async function main() {
   // We get the contract to deploy
-  const CampaignFactory = await ethers.getContractFactory("TestERC20");
+  const CampaignFactory = await ethers.getContractFactory("FMATICERC20");
   const deployed = await CampaignFactory.deploy();
 
   console.log("Contract deployed to:", deployed.address);
