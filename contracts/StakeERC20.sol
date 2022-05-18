@@ -8,8 +8,6 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "../interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-//import "./matic.sol";
-//import "./Dux.sol";
 
 contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     using SafeMath for uint256;
@@ -26,15 +24,8 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     uint256 public lastfeedprice = 123456;
     IERC20 public _token;
 
-    IERC20 public link; 
     IERC20 public dux; 
 
-    enum Tokens {
-        LINK,
-        MATIC
-    }
-
-    Tokens public enumToken;
 
     struct StakedToken {
         uint256 amount;
@@ -42,112 +33,103 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         uint256 startTimestamp;
     }
 
-
-    mapping(uint256 => IERC20) _tokensF ;
-
-
-
-
-
+    struct Pools{
+        IERC20 token;
+        AggregatorV3Interface oracle;
+        string oracleProvider;
+    }
 
 
-    mapping(address => mapping(Tokens => StakedToken)) public stakedTokens; // owner => StakedToken
-    mapping(address => mapping(Tokens => uint256)) public accruedReward;
-   // mapping(Tokens =>IERC20) public tokensByNumbber; 
+    mapping(uint256 => Pools) public _tokensF ;
+    mapping(address => mapping(uint256 => StakedToken)) public stakedTokens; // owner => StakedToken
+    mapping(address => mapping(uint256 => uint256)) public accruedReward;
+
+   //allPools
+   uint256[] public allPools;
 
 
     constructor(
 
          uint256 _rewardFactor,
-         IERC20[] memory tokensPool
+         IERC20[] memory tokensPool,
+         AggregatorV3Interface[] memory oracleContract,
+         string[] memory oracleProvider
 
     ) {
 
-
-
         for (uint256 index = 0; index < tokensPool.length; index++) {
-
-            _tokensF[index] = tokensPool[0];
-            
+            _tokensF[index].token = tokensPool[index];
+            _tokensF[index].oracleProvider = oracleProvider[index];
+            _tokensF[index].oracle = oracleContract[index];
+            allPools.push(index);
         }
 
-               // price feed ETHER / USD rinkeby
-    //   tokenPriceFeed = AggregatorV3Interface(
-    //         0xd8bD0a1cB028a31AA859A21A3758685a95dE4623
-    //     );
-         link = IERC20(0x01BE23585060835E02B77ef475b0Cc51aA1e0709);
-
          dux   = IERC20(0x1f42e40BC1cA24609200cf6Eae2e9662FfE35869);   
-
-
-
          rewardFactor = _rewardFactor;
     }
 
-   function stake(uint256 _amount, IERC20 token, Tokens tokenName) public {
-       require(token.balanceOf(msg.sender) >= _amount, "You don't own this amount of matic.");
-        if(stakedTokens[msg.sender][tokenName].amount > 0){
-            incrementAccruedReward(msg.sender,tokenName);
+   function stake(uint256 _amount, uint256 tokenIndex) public {
+       require(_tokensF[tokenIndex].token.balanceOf(msg.sender) >= _amount, "You don't own this amount of matic.");
+        if(stakedTokens[msg.sender][tokenIndex].amount > 0){
+            incrementAccruedReward(msg.sender,tokenIndex);
         }
         
-        token.transferFrom(msg.sender, address(this), _amount * 1e18);
-        stakedTokens[msg.sender][tokenName] = StakedToken(stakedTokens[msg.sender][tokenName].amount + (_amount  * 1e18), token, block.timestamp);
+        _tokensF[tokenIndex].token.transferFrom(msg.sender, address(this), _amount * 1e18);
+        stakedTokens[msg.sender][tokenIndex] = StakedToken(stakedTokens[msg.sender][tokenIndex].amount + (_amount  * 1e18), _tokensF[tokenIndex].token, block.timestamp);
 
    }
 
 
-
-
-   function calculateReward(address _owner, Tokens tokenName) public returns (uint256){
-        StakedToken memory staked = stakedTokens[_owner][tokenName];
-        uint256 rewardPriceUsd = (staked.amount * getLatestEthPrice(tokenName) / 1e8 * rewardFactor * (block.timestamp - staked.startTimestamp)) / 100 / rewardInterval;
+   function calculateReward(address _owner, uint256 tokenIndex, AggregatorV3Interface _tokenPriceFeed) public  view returns (uint256) {
+       
+        StakedToken memory staked = stakedTokens[_owner][tokenIndex];
+        uint256 rewardPriceUsd = (staked.amount * getLatestEthPrice(_tokenPriceFeed) / 1e8 * rewardFactor * (block.timestamp - staked.startTimestamp)) / 100 / rewardInterval;
         return rewardPriceUsd / duxPrice / 100;                   
    }
    
 
-    function incrementAccruedReward(address _owner, Tokens tokenName) internal {
-        uint256 reward = calculateReward(_owner,tokenName );
-        StakedToken memory staked = stakedTokens[_owner][tokenName];
+    function incrementAccruedReward(address _owner, uint256 tokenIndex) internal {
+
+        tokenPriceFeed = _tokensF[tokenIndex].oracle;
+
+        uint256 reward = calculateReward(_owner,tokenIndex, tokenPriceFeed );
+        StakedToken memory staked = stakedTokens[_owner][tokenIndex];
         staked.startTimestamp = block.timestamp;
-        accruedReward[_owner][tokenName] += reward;
+        accruedReward[_owner][tokenIndex] += reward;
    }
 
-    function withdraw(Tokens tokenName) private {             
+    function withdraw(uint256 tokenIndex) private {             
 
-        incrementAccruedReward(msg.sender, tokenName);
+        incrementAccruedReward(msg.sender, tokenIndex);
 
    }
 
-    function getRewards(Tokens tokenName) public {
-        withdraw(tokenName);
-        uint256 rewards = accruedReward[msg.sender][tokenName];
+    function getRewards(uint256 tokenIndex) public {
+        withdraw(tokenIndex);
+        uint256 rewards = accruedReward[msg.sender][tokenIndex];
         dux.transfer(msg.sender, rewards);
-        stakedTokens[msg.sender][tokenName].startTimestamp = block.timestamp;
-        accruedReward[msg.sender][tokenName] = 0;  
+        stakedTokens[msg.sender][tokenIndex].startTimestamp = block.timestamp;
+        accruedReward[msg.sender][tokenIndex] = 0;  
     }
 
-     function unstake(Tokens tokenName, IERC20 token) public {
-        withdraw(tokenName);
-        StakedToken memory staked = stakedTokens[msg.sender][tokenName];
-        uint256 rewards = accruedReward[msg.sender][tokenName];
+     function unstake(uint256 tokenIndex) public {
+        withdraw(tokenIndex);
+        StakedToken memory staked = stakedTokens[msg.sender][tokenIndex];
+        uint256 rewards = accruedReward[msg.sender][tokenIndex];
         dux.transfer(msg.sender, rewards);
-        stakedTokens[msg.sender][tokenName].amount = 0;
-        stakedTokens[msg.sender][tokenName].startTimestamp = 0;
-        accruedReward[msg.sender][tokenName] = 0;
-        token.transfer(msg.sender, staked.amount);
+        stakedTokens[msg.sender][tokenIndex].amount = 0;
+        stakedTokens[msg.sender][tokenIndex].startTimestamp = 0;
+        accruedReward[msg.sender][tokenIndex] = 0;
+        _tokensF[tokenIndex].token.transfer(msg.sender, staked.amount);
     }
 
-    function getLatestEthPrice(Tokens tokenName ) public returns (uint256 latestTokenPrice) {
+    function getLatestEthPrice(AggregatorV3Interface _tokenPriceFeed ) public view returns (uint256 latestTokenPrice) {
 
-         if (keccak256(abi.encodePacked(tokenName)) == keccak256(abi.encodePacked(Tokens.MATIC)) ) {
-            //matic
-            tokenPriceFeed = AggregatorV3Interface(0x7794ee502922e2b723432DDD852B3C30A911F021);
-       } else {
-            //link
-            tokenPriceFeed = AggregatorV3Interface(0xd8bD0a1cB028a31AA859A21A3758685a95dE4623);
-       } 
-        (, int256 price, , , ) = tokenPriceFeed.latestRoundData();
+        (, int256 price, , , ) = _tokenPriceFeed.latestRoundData();
+        
         latestTokenPrice = uint256(price);
+
+        return latestTokenPrice;
     }
 
     function setrewardFactor(uint256 _rewardFactor) public {
@@ -160,17 +142,23 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         return tokenPriceFeed;
     }
 
-    function addnewPool(IERC20 newToken, string memory oracle, string memory poolOrContract ) public  {
+    function addnewPool(IERC20 newToken, AggregatorV3Interface  oracle, string memory poolOrContract ) public  {
 
+        uint256 _newIndex = getAllPools() + 1; 
+        _tokensF[_newIndex].token = newToken;
+        _tokensF[_newIndex].oracle = oracle;
+        _tokensF[_newIndex].oracleProvider = poolOrContract;
+        allPools.push(_newIndex);
+    }
+
+    function getAllPools() public view returns(uint256) {
+        return allPools.length - 1;
     }
 
     function getTokensF(uint256 tokenNumber) public view returns(IERC20) {
 
+        return _tokensF[tokenNumber].token;
 
-        return _tokensF[tokenNumber];
-
-    }
-
-
+    }   
 
 }
