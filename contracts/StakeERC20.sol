@@ -14,7 +14,6 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
 
     AggregatorV3Interface internal LinkPriceFeed;
     AggregatorV3Interface internal FMaticPriceFeed;
-
     AggregatorV3Interface internal tokenPriceFeed;
     
     uint256 public rewardFactor; // 1 = 1 per cent
@@ -22,8 +21,6 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     uint256 public duxPrice = 25 ; // DUX price 
     uint256 public totalSupply = 1406250;
     uint256 public lastfeedprice = 123456;
-    IERC20 public _token;
-
     IERC20 public dux; 
 
 
@@ -40,13 +37,14 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     }
 
 
-    mapping(uint256 => Pools) public _tokensF ;
-    mapping(address => mapping(uint256 => StakedToken)) public stakedTokens; // owner => StakedToken
-    mapping(address => mapping(uint256 => uint256)) public accruedReward;
+    mapping(uint256 => Pools) private pools;
+    mapping(address => mapping(uint256 => StakedToken)) private stakedTokens; // owner => StakedToken
+    mapping(address => mapping(uint256 => uint256)) private accruedReward;
+
+
 
    //allPools
    uint256[] public allPools;
-
 
     constructor(
 
@@ -58,9 +56,9 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     ) {
 
         for (uint256 index = 0; index < tokensPool.length; index++) {
-            _tokensF[index].token = tokensPool[index];
-            _tokensF[index].oracleProvider = oracleProvider[index];
-            _tokensF[index].oracle = oracleContract[index];
+            pools[index].token = tokensPool[index];
+            pools[index].oracleProvider = oracleProvider[index];
+            pools[index].oracle = oracleContract[index];
             allPools.push(index);
         }
 
@@ -68,15 +66,14 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
          rewardFactor = _rewardFactor;
     }
 
-   function stake(uint256 _amount, uint256 tokenIndex) public {
-       require(_tokensF[tokenIndex].token.balanceOf(msg.sender) >= _amount, "You don't own this amount of matic.");
+   function stake(uint256 _amount, uint256 tokenIndex) public nonReentrant  {
+       require(pools[tokenIndex].token.balanceOf(msg.sender) >= _amount, "You don't own this amount of matic.");
         if(stakedTokens[msg.sender][tokenIndex].amount > 0){
             incrementAccruedReward(msg.sender,tokenIndex);
         }
-        
-        _tokensF[tokenIndex].token.transferFrom(msg.sender, address(this), _amount * 1e18);
-        stakedTokens[msg.sender][tokenIndex] = StakedToken(stakedTokens[msg.sender][tokenIndex].amount + (_amount  * 1e18), _tokensF[tokenIndex].token, block.timestamp);
-
+        stakedTokens[msg.sender][tokenIndex] = StakedToken(stakedTokens[msg.sender][tokenIndex].amount + (_amount  * 1e18), pools[tokenIndex].token, block.timestamp);
+        pools[tokenIndex].token.transferFrom(msg.sender, address(this), _amount * 1e18);
+       
    }
 
 
@@ -90,8 +87,7 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
 
     function incrementAccruedReward(address _owner, uint256 tokenIndex) internal {
 
-        tokenPriceFeed = _tokensF[tokenIndex].oracle;
-
+        tokenPriceFeed = pools[tokenIndex].oracle;
         uint256 reward = calculateReward(_owner,tokenIndex, tokenPriceFeed );
         StakedToken memory staked = stakedTokens[_owner][tokenIndex];
         staked.startTimestamp = block.timestamp;
@@ -104,15 +100,15 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
 
    }
 
-    function getRewards(uint256 tokenIndex) public {
+    function getRewards(uint256 tokenIndex) public nonReentrant  {
         withdraw(tokenIndex);
         uint256 rewards = accruedReward[msg.sender][tokenIndex];
-        dux.transfer(msg.sender, rewards);
         stakedTokens[msg.sender][tokenIndex].startTimestamp = block.timestamp;
         accruedReward[msg.sender][tokenIndex] = 0;  
+        dux.transfer(msg.sender, rewards);
     }
 
-     function unstake(uint256 tokenIndex) public {
+     function unstake(uint256 tokenIndex) public nonReentrant {
         withdraw(tokenIndex);
         StakedToken memory staked = stakedTokens[msg.sender][tokenIndex];
         uint256 rewards = accruedReward[msg.sender][tokenIndex];
@@ -120,7 +116,7 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         stakedTokens[msg.sender][tokenIndex].amount = 0;
         stakedTokens[msg.sender][tokenIndex].startTimestamp = 0;
         accruedReward[msg.sender][tokenIndex] = 0;
-        _tokensF[tokenIndex].token.transfer(msg.sender, staked.amount);
+        pools[tokenIndex].token.transfer(msg.sender, staked.amount);
     }
 
     function getLatestEthPrice(AggregatorV3Interface _tokenPriceFeed ) public view returns (uint256 latestTokenPrice) {
@@ -142,12 +138,12 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         return tokenPriceFeed;
     }
 
-    function addnewPool(IERC20 newToken, AggregatorV3Interface  oracle, string memory poolOrContract ) public  {
+    function addnewPool(IERC20 newToken, AggregatorV3Interface  oracle, string memory poolOrContract ) public onlyOwner {
 
         uint256 _newIndex = getAllPools() + 1; 
-        _tokensF[_newIndex].token = newToken;
-        _tokensF[_newIndex].oracle = oracle;
-        _tokensF[_newIndex].oracleProvider = poolOrContract;
+        pools[_newIndex].token = newToken;
+        pools[_newIndex].oracle = oracle;
+        pools[_newIndex].oracleProvider = poolOrContract;
         allPools.push(_newIndex);
     }
 
@@ -155,10 +151,34 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         return allPools.length - 1;
     }
 
-    function getTokensF(uint256 tokenNumber) public view returns(IERC20) {
+    function getTokensF(uint256 tokenIndex) public view returns(IERC20) {
+        return pools[tokenIndex].token;
+    }
 
-        return _tokensF[tokenNumber].token;
+    function getPriceFeed(uint256 tokenIndex) public view returns(AggregatorV3Interface) {
 
-    }   
+        return pools[tokenIndex].oracle;
+    
+    }
+
+    function approveContract(uint256 tokenIndex) public {
+            pools[tokenIndex].token.approve(address(this) , pools[tokenIndex].token.balanceOf(msg.sender));
+    }
+
+    function approveDux() public onlyOwner {
+            dux.approve(address(this),dux.balanceOf(msg.sender));
+    }
+
+    function getTotalStaked(uint256 tokenIndex, address _sender) public view returns(uint256) 
+    {
+
+      return  stakedTokens[_sender][tokenIndex].amount;
+
+    }
+
+    function getRewardFactor() public view returns(uint256) {
+        return rewardFactor;
+    }
+
 
 }
