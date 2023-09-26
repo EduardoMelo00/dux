@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "../interfaces/IQuoter.sol";
 
 
-contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
+contract Pollen is ReentrancyGuard, Ownable, Pausable {
     using SafeMath for uint256;
 
     AggregatorV3Interface internal LinkPriceFeed;
@@ -21,10 +21,8 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
     
     uint256 public rewardFactor; // 1 = 1 per cent
     uint256 public rewardInterval = 86400/24/60; // 86400 = 1 day
-    uint256 public duxPrice = 25 ; // DUX price 
-    uint256 public totalSupply = 1406250;
-    uint256 public lastfeedprice = 123456;
-    IERC20 public dux; 
+    uint256 public xrzPrice = 25 ; // DUX price 
+    IERC20 public DAI; 
 
 
 
@@ -74,16 +72,12 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
             allPools.push(index);
         }
 
-         dux   = IERC20(0x1f42e40BC1cA24609200cf6Eae2e9662FfE35869);   
-         rewardFactor = _rewardFactor;
-         quoter = IQuoter(0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6);
+         DAI   = IERC20(0x1f42e40BC1cA24609200cf6Eae2e9662FfE35869);   
+
 
     }
 
    function stake(uint256 _amount, uint256 tokenIndex) public nonReentrant  {
-
-
-
 
       // require(pools[tokenIndex].token.allowance(address(this), msg.sender) > 0, "You need first get approval from token" );
        require(pools[tokenIndex].token.balanceOf(msg.sender) >= _amount, "You don't own this amount of matic.");
@@ -127,9 +121,7 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         dux.transfer(msg.sender, rewards);
     }
 
-     function unstake(uint256 tokenIndex, uint256 period) public nonReentrant {
-
-
+     function unstake(uint256 tokenIndex) public nonReentrant {
         withdraw(tokenIndex);
         StakedToken memory staked = stakedTokens[msg.sender][tokenIndex];
         uint256 rewards = accruedReward[msg.sender][tokenIndex];
@@ -139,9 +131,6 @@ contract StakeERC20 is ReentrancyGuard, Ownable, Pausable {
         accruedReward[msg.sender][tokenIndex] = 0;
         pools[tokenIndex].token.transfer(msg.sender, staked.amount);
     }
-
-
-
 
     function getLatestEthPrice(AggregatorV3Interface _tokenPriceFeed ) public view returns (uint256 latestTokenPrice) {
 
